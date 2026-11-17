@@ -13,20 +13,66 @@ import requests
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DEST = "/2JUICY💦/01_Video/GTA 6 Clips"
 
+def iso_seconds(value):
+    """Parse the ISO 8601 durations returned by YouTube videos.list."""
+    import re
+    m = re.fullmatch(r"PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?", value or "")
+    return sum(int(x or 0) * factor for x, factor in zip(m.groups(), (3600, 60, 1))) if m else 0
+
 def discover():
+    """Shorts-first metadata discovery. Duration is not proof of vertical aspect ratio."""
     key = os.environ["YOUTUBE_API_KEY"]
-    videos = []
-    for query in ("GTA 6 gameplay shorts", "GTA VI gameplay"):
-        data = requests.get("https://www.googleapis.com/youtube/v3/search", params={
+    found = {}
+    for query, priority in (("GTA 6 gameplay shorts", 2), ("GTA VI gameplay", 1)):
+        response = requests.get("https://www.googleapis.com/youtube/v3/search", params={
             "key": key, "part": "snippet", "q": query, "type": "video",
             "order": "date", "maxResults": 25,
-            "videoDuration": "short" if "shorts" in query else "any"
+            "videoDuration": "short" if priority == 2 else "any"
         }, timeout=30)
-        data.raise_for_status()
-        for item in data.json().get("items", []):
-            videos.append({"id": item["id"]["videoId"], "title": item["snippet"]["title"],
-                           "url": "https://youtube.com/watch?v=" + item["id"]["videoId"]})
-    return list({v["id"]: v for v in videos}.values())
+        response.raise_for_status()
+        for item in response.json().get("items", []):
+            vid = item["id"]["videoId"]
+            title = item["snippet"]["title"]
+            title_lower = title.lower()
+            if not any(term in title_lower for term in ("gta 6", "gta vi", "grand theft auto vi", "grand theft auto 6")):
+                continue
+            if any(term in title_lower for term in ("gta 5", "gta v ", "gta online", "gta 4")):
+                continue
+            if vid not in found:
+                found[vid] = {"id": vid, "title": title, "url": "https://youtube.com/watch?v=" + vid,
+                              "published_at": item["snippet"].get("publishedAt"), "shorts_query": priority == 2}
+            else:
+                found[vid]["shorts_query"] |= priority == 2
+    ids = list(found)
+    for i in range(0, len(ids), 50):
+        response = requests.get("https://www.googleapis.com/youtube/v3/videos", params={
+            "key": key, "part": "contentDetails,status", "id": ",".join(ids[i:i+50])
+        }, timeout=30)
+        response.raise_for_status()
+        for item in response.json().get("items", []):
+            v = found[item["id"]]
+            v["duration_seconds"] = iso_seconds(item["contentDetails"].get("duration"))
+            v["embeddable"] = item.get("status", {}).get("embeddable", False)
+            v["short_candidate"] = 0 < v["duration_seconds"] <= 180
+            v["score"] = (30 if v["short_candidate"] else 0) + (20 if v["shorts_query"] else 0)
+            v["vertical_verified"] = False
+            v["rights_verified"] = False
+    return sorted((v for v in found.values() if "duration_seconds" in v),
+                  key=lambda v: (v["score"], v["published_at"] or ""), reverse=True)
+
+def read_seen(dbx):
+    try:
+        _, response = dbx.files_download(DEST + "/discovery_state.json")
+        return set(json.loads(response.content).get("seen_ids", []))
+    except dropbox.exceptions.ApiError as exc:
+        if exc.error.is_path() and exc.error.get_path().is_not_found():
+            return set()
+        raise
+
+def save_seen(dbx, ids):
+    content = json.dumps({"seen_ids": sorted(ids)}, indent=2).encode()
+    dbx.files_upload(content, DEST + "/discovery_state.json",
+                     mode=dropbox.files.WriteMode.overwrite)
 
 def approved(s):
     url = urlparse(s.get("source_url", ""))
@@ -55,7 +101,7 @@ def main():
         oauth2_refresh_token=os.environ["DROPBOX_REFRESH_TOKEN"],
         app_key=os.environ["DROPBOX_APP_KEY"],
         app_secret=os.environ["DROPBOX_APP_SECRET"])
-    print("Dropbox account:", dbx.users_get_current_account().name.display_name)
+    print("Dropbox account:", dbx.users_get_current_account().name.display_name)\n    seen = read_seen(dbx)\n    fresh = [v for v in candidates if v["id"] not in seen]\n    print("New candidates:", len(fresh), "Previously seen:", len(candidates) - len(fresh))
     folder = DEST + "/" + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     ensure_folder(dbx, folder)
     uploaded = []
@@ -82,8 +128,8 @@ def main():
             except Exception as exc:
                 print("Source skipped:", s.get("id"), type(exc).__name__, str(exc)[:120])
         manifest = work / "manifest.json"
-        manifest.write_text(json.dumps({"candidates": candidates, "uploaded": uploaded}, indent=2))
-        upload(dbx, manifest, folder + "/manifest.json")
+        manifest.write_text(json.dumps({"candidates": fresh[:25], "uploaded": uploaded, "note": "Short candidates are not verified vertical or rights-cleared"}, indent=2))
+        upload(dbx, manifest, folder + "/manifest.json")\n        save_seen(dbx, seen | {v["id"] for v in fresh})
     print("Uploaded clips:", len(uploaded))
 
 if __name__ == "__main__":
