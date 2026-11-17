@@ -16,7 +16,7 @@ DEST = "/2JUICY💦/01_Video/GTA 6 Clips"
 def iso_seconds(value):
     """Parse the ISO 8601 durations returned by YouTube videos.list."""
     import re
-    m = re.fullmatch(r"PT(?:(\\d+)H)?(?:(\\d+)M)?(?:(\\d+)S)?", value or "")
+    m = re.fullmatch(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value or "")
     return sum(int(x or 0) * factor for x, factor in zip(m.groups(), (3600, 60, 1))) if m else 0
 
 def discover():
