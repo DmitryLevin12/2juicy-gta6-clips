@@ -120,7 +120,8 @@ def probe_accessibility(candidates, limit=15):
         except Exception as exc:
             results.append({"id": video["id"], "url": video["url"],
                             "formats_accessible": False, "downloaded": False,
-                            "error_type": classify_probe_error(str(exc)),\n                            "error": str(exc)[:250]})
+                            "error_type": classify_probe_error(str(exc)),
+                            "error": str(exc)[:250]})
     return results
 
 def approved(s):
