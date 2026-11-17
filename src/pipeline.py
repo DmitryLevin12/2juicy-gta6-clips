@@ -155,8 +155,11 @@ def main():
     seen = read_seen(dbx)
     fresh = [v for v in candidates if v["id"] not in seen]
     print("New candidates:", len(fresh), "Previously seen:", len(candidates) - len(fresh))
-    # Sample the current search results even when previously seen, to diagnose access reliably.\n    probes = probe_accessibility(candidates)
-    print("Technically accessible and >=30 seconds:", sum(p.get("eligible_for_review", False) for p in probes), "of", len(probes))\n    from collections import Counter\n    print("Probe failure reasons:", dict(Counter(p.get("error_type", "none") for p in probes)))
+    # Sample the current search results even when previously seen, to diagnose access reliably.
+    probes = probe_accessibility(candidates)
+    print("Technically accessible and >=30 seconds:", sum(p.get("eligible_for_review", False) for p in probes), "of", len(probes))
+    from collections import Counter
+    print("Probe failure reasons:", dict(Counter(p.get("error_type", "none") for p in probes)))
     folder = DEST + "/" + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     ensure_folder(dbx, folder)
     uploaded = []
@@ -185,7 +188,10 @@ def main():
         manifest = work / "manifest.json"
         manifest.write_text(json.dumps({"candidates": fresh[:25], "accessibility_probes": probes, "uploaded": uploaded, "note": "Accessibility is not a license or authorization to download or reuse"}, indent=2))
         upload(dbx, manifest, folder + "/manifest.json")
-        # Do not mark access failures as processed: they need to remain retryable.\n        checked = {p["id"] for p in probes if p.get("formats_accessible")}\n        save_seen(dbx, seen | checked)\n        print("Recorded accessible candidates:", len(checked), "Retryable failures:", len(probes) - len(checked))
+        # Do not mark access failures as processed: they need to remain retryable.
+        checked = {p["id"] for p in probes if p.get("formats_accessible")}
+        save_seen(dbx, seen | checked)
+        print("Recorded accessible candidates:", len(checked), "Retryable failures:", len(probes) - len(checked))
     print("Uploaded clips:", len(uploaded))
 
 if __name__ == "__main__":
