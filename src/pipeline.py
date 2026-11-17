@@ -82,7 +82,7 @@ def probe_accessibility(candidates, limit=15):
         try:
             process = subprocess.run(
                 ["yt-dlp", "--no-playlist", "--skip-download", "--no-warnings",
-                 "--no-check-certificates", "--dump-single-json", video["url"]],
+                 "--dump-single-json", video["url"]],
                 capture_output=True, text=True, timeout=35)
             if process.returncode:
                 raise ValueError((process.stderr or "yt-dlp returned an error")[-250:])
@@ -168,7 +168,7 @@ def main():
         manifest = work / "manifest.json"
         manifest.write_text(json.dumps({"candidates": fresh[:25], "accessibility_probes": probes, "uploaded": uploaded, "note": "Accessibility is not a license or authorization to download or reuse"}, indent=2))
         upload(dbx, manifest, folder + "/manifest.json")
-        save_seen(dbx, seen | {v["id"] for v in fresh})
+        # Do not mark access failures as processed: they need to remain retryable.\n        checked = {p["id"] for p in probes if p.get("formats_accessible")}\n        save_seen(dbx, seen | checked)\n        print("Recorded accessible candidates:", len(checked), "Retryable failures:", len(probes) - len(checked))
     print("Uploaded clips:", len(uploaded))
 
 if __name__ == "__main__":
