@@ -74,6 +74,39 @@ def save_seen(dbx, ids):
     dbx.files_upload(content, DEST + "/discovery_state.json",
                      mode=dropbox.files.WriteMode.overwrite)
 
+
+def probe_accessibility(candidates, limit=15):
+    """Inspect public metadata and available formats without downloading media."""
+    results = []
+    for video in candidates[:limit]:
+        try:
+            process = subprocess.run(
+                ["yt-dlp", "--no-playlist", "--skip-download", "--no-warnings",
+                 "--no-check-certificates", "--dump-single-json", video["url"]],
+                capture_output=True, text=True, timeout=35)
+            if process.returncode:
+                raise ValueError((process.stderr or "yt-dlp returned an error")[-250:])
+            info = json.loads(process.stdout)
+            duration = float(info.get("duration") or video.get("duration_seconds") or 0)
+            formats = info.get("formats") or []
+            accessible = any(fmt.get("vcodec") not in (None, "none") and
+                             fmt.get("url") for fmt in formats)
+            width = info.get("width")
+            height = info.get("height")
+            vertical = bool(width and height and height > width)
+            results.append({"id": video["id"], "title": video["title"],
+                            "url": video["url"], "duration_seconds": duration,
+                            "at_least_30_seconds": duration >= 30,
+                            "vertical": vertical, "width": width, "height": height,
+                            "formats_accessible": accessible,
+                            "eligible_for_review": duration >= 30 and accessible,
+                            "downloaded": False})
+        except Exception as exc:
+            results.append({"id": video["id"], "url": video["url"],
+                            "formats_accessible": False, "downloaded": False,
+                            "error": str(exc)[:250]})
+    return results
+
 def approved(s):
     url = urlparse(s.get("source_url", ""))
     return (s.get("rights_cleared") is True and bool(s.get("permission_note"))
@@ -105,6 +138,8 @@ def main():
     seen = read_seen(dbx)
     fresh = [v for v in candidates if v["id"] not in seen]
     print("New candidates:", len(fresh), "Previously seen:", len(candidates) - len(fresh))
+    probes = probe_accessibility(fresh)
+    print("Technically accessible and >=30 seconds:", sum(p.get("eligible_for_review", False) for p in probes), "of", len(probes))
     folder = DEST + "/" + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     ensure_folder(dbx, folder)
     uploaded = []
@@ -131,7 +166,7 @@ def main():
             except Exception as exc:
                 print("Source skipped:", s.get("id"), type(exc).__name__, str(exc)[:120])
         manifest = work / "manifest.json"
-        manifest.write_text(json.dumps({"candidates": fresh[:25], "uploaded": uploaded, "note": "Short candidates are not verified vertical or rights-cleared"}, indent=2))
+        manifest.write_text(json.dumps({"candidates": fresh[:25], "accessibility_probes": probes, "uploaded": uploaded, "note": "Accessibility is not a license or authorization to download or reuse"}, indent=2))
         upload(dbx, manifest, folder + "/manifest.json")
         save_seen(dbx, seen | {v["id"] for v in fresh})
     print("Uploaded clips:", len(uploaded))
