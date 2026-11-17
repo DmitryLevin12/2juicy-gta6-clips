@@ -75,6 +75,22 @@ def save_seen(dbx, ids):
                      mode=dropbox.files.WriteMode.overwrite)
 
 
+def classify_probe_error(message):
+    msg = message.lower()
+    if "sign in to confirm" in msg or "not a bot" in msg:
+        return "youtube_authentication_challenge"
+    if "private video" in msg or "video is private" in msg:
+        return "private_video"
+    if "not available in your country" in msg:
+        return "geo_restricted"
+    if "unsupported url" in msg:
+        return "unsupported_url"
+    if "timed out" in msg or "timeout" in msg:
+        return "network_timeout"
+    if "403" in msg:
+        return "http_403"
+    return "other_extraction_error"
+
 def probe_accessibility(candidates, limit=15):
     """Inspect public metadata and available formats without downloading media."""
     results = []
@@ -104,7 +120,7 @@ def probe_accessibility(candidates, limit=15):
         except Exception as exc:
             results.append({"id": video["id"], "url": video["url"],
                             "formats_accessible": False, "downloaded": False,
-                            "error": str(exc)[:250]})
+                            "error_type": classify_probe_error(str(exc)),\n                            "error": str(exc)[:250]})
     return results
 
 def approved(s):
@@ -138,8 +154,8 @@ def main():
     seen = read_seen(dbx)
     fresh = [v for v in candidates if v["id"] not in seen]
     print("New candidates:", len(fresh), "Previously seen:", len(candidates) - len(fresh))
-    probes = probe_accessibility(fresh)
-    print("Technically accessible and >=30 seconds:", sum(p.get("eligible_for_review", False) for p in probes), "of", len(probes))
+    # Sample the current search results even when previously seen, to diagnose access reliably.\n    probes = probe_accessibility(candidates)
+    print("Technically accessible and >=30 seconds:", sum(p.get("eligible_for_review", False) for p in probes), "of", len(probes))\n    from collections import Counter\n    print("Probe failure reasons:", dict(Counter(p.get("error_type", "none") for p in probes)))
     folder = DEST + "/" + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     ensure_folder(dbx, folder)
     uploaded = []
