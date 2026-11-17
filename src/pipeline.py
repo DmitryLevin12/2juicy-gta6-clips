@@ -101,7 +101,10 @@ def main():
         oauth2_refresh_token=os.environ["DROPBOX_REFRESH_TOKEN"],
         app_key=os.environ["DROPBOX_APP_KEY"],
         app_secret=os.environ["DROPBOX_APP_SECRET"])
-    print("Dropbox account:", dbx.users_get_current_account().name.display_name)\n    seen = read_seen(dbx)\n    fresh = [v for v in candidates if v["id"] not in seen]\n    print("New candidates:", len(fresh), "Previously seen:", len(candidates) - len(fresh))
+    print("Dropbox account:", dbx.users_get_current_account().name.display_name)
+    seen = read_seen(dbx)
+    fresh = [v for v in candidates if v["id"] not in seen]
+    print("New candidates:", len(fresh), "Previously seen:", len(candidates) - len(fresh))
     folder = DEST + "/" + dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d")
     ensure_folder(dbx, folder)
     uploaded = []
@@ -129,7 +132,8 @@ def main():
                 print("Source skipped:", s.get("id"), type(exc).__name__, str(exc)[:120])
         manifest = work / "manifest.json"
         manifest.write_text(json.dumps({"candidates": fresh[:25], "uploaded": uploaded, "note": "Short candidates are not verified vertical or rights-cleared"}, indent=2))
-        upload(dbx, manifest, folder + "/manifest.json")\n        save_seen(dbx, seen | {v["id"] for v in fresh})
+        upload(dbx, manifest, folder + "/manifest.json")
+        save_seen(dbx, seen | {v["id"] for v in fresh})
     print("Uploaded clips:", len(uploaded))
 
 if __name__ == "__main__":
