@@ -1,4 +1,4 @@
-name: GTA VI discovery and Dropbox test
+name: GTA VI discovery and approved clips
 on:
   workflow_dispatch:
 permissions:
@@ -17,6 +17,8 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y ffmpeg
           python -m pip install -r requirements.txt
+      - name: Check Python syntax
+        run: python -m py_compile src/pipeline.py
       - name: Run discovery and approved-source upload
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
@@ -24,20 +26,3 @@ jobs:
           DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
           DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
         run: python src/pipeline.py
-      - name: Create and upload original vertical test MP4
-        env:
-          DROPBOX_APP_KEY: ${{ secrets.DROPBOX_APP_KEY }}
-          DROPBOX_APP_SECRET: ${{ secrets.DROPBOX_APP_SECRET }}
-          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
-        run: |
-          ffmpeg -y -hide_banner -loglevel error -f lavfi -i "testsrc2=size=1080x1920:rate=30" -t 8 -an -c:v libx264 -preset ultrafast -crf 28 -pix_fmt yuv420p test_vertical.mp4
-          python - <<'PY'
-          import datetime
-          import dropbox
-          dbx = dropbox.Dropbox(oauth2_refresh_token=__import__('os').environ['DROPBOX_REFRESH_TOKEN'], app_key=__import__('os').environ['DROPBOX_APP_KEY'], app_secret=__import__('os').environ['DROPBOX_APP_SECRET'])
-          day = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
-          path = f"/2JUICY💦/01_Video/GTA 6 Clips/{day}/TEST_vertical_1080x1920.mp4"
-          with open('test_vertical.mp4','rb') as f:
-              dbx.files_upload(f.read(), path, mode=dropbox.files.WriteMode.overwrite)
-          print("Test MP4 uploaded:", path)
-          PY
